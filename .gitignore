@@ -1,0 +1,11 @@
+/target
+covers
+b50_slides.html
+records.csv
+render.sh
+wiki.html
+wiki_cache.json
+slide*.png
+input.txt
+.DS_Store
+slides
