@@ -177,7 +177,6 @@ impl HtmlGenerator {
             font-size: 20px; color: var(--accent-blue);
             margin-bottom: 30px;
             letter-spacing: 1px;
-            text-transform: uppercase;
         }}
 
         /* Metrics Grid */
@@ -239,6 +238,10 @@ impl HtmlGenerator {
         }}
         .comment-header {{ width: 100%; text-align: left; }}
 
+        #comment-display {{
+            min-width: 100%;
+        }}
+
         .comment-text {{
             margin-top: 12px;
             color: var(--text-main);
@@ -266,7 +269,7 @@ impl HtmlGenerator {
         <!-- Right Content -->
         <div id="detail-view">
             <div class="header-info">
-                <div class="player-name">{0}</div>
+                <div class="player-name" contenteditable="true">{0}</div>
                 <div class="total-rating">BEST 50</div>
                 <div style="font-size: 12px; opacity: 0.5;">{1}</div>
             </div>
