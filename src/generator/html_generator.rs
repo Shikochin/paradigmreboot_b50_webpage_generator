@@ -222,6 +222,35 @@ impl HtmlGenerator {
             from {{ opacity: 0; transform: translateY(10px); }}
             to {{ opacity: 1; transform: translateY(0); }}
         }}
+        /* Comment Panel (inline editable, parallelogram to match list) */
+        .comment-panel {{
+            width: 680px;
+            background: var(--panel-bg);
+            /* Angled cut style like left list */
+            clip-path: polygon(0 0, 100% 0, 95% 100%, 0 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            padding: 16px 22px 16px 18px;
+            margin-top: 24px;
+            color: var(--text-main);
+            box-sizing: border-box;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+        }}
+        .comment-header {{ width: 100%; text-align: left; }}
+
+        .comment-text {{
+            margin-top: 12px;
+            color: var(--text-main);
+            white-space: pre-wrap;
+            outline: none;
+            text-align: left;
+            min-height: 64px;
+            cursor: text;
+            user-select: text;
+            caret-color: var(--accent-blue);
+            font-size: 14px;
+        }}
     </style>
 </head>
 <body>
@@ -271,6 +300,14 @@ impl HtmlGenerator {
                         <div class="metric-value" id="detail-level">0.0</div>
                     </div>
                 </div>
+                </div>
+                <!-- Comment Panel (inline editable, saved to localStorage) - placed below metrics -->
+                <div class="comment-panel" id="comment-panel">
+                    <div class="comment-header">
+                        <div style="font-weight:700;">Comments</div>
+                    </div>
+                    <div id="comment-display" class="comment-text" contenteditable="true"></div>
+                </div>
             </div>
         </div>
         <div id="progress-bar"></div>
@@ -303,6 +340,67 @@ impl HtmlGenerator {
         const elStatus = document.getElementById('status-overlay');
         const elAnimCover = document.getElementById('anim-cover');
         const elAnimInfo = document.getElementById('anim-info');
+
+        // Comment elements (inline editable)
+        const elCommentPanel = document.getElementById('comment-panel');
+        const elCommentDisplay = document.getElementById('comment-display');
+
+        // Comments persistence (localStorage)
+        const COMMENTS_KEY = 'b50_comments_v1';
+        let comments = {{}};
+
+        function loadComments() {{
+            try {{
+                const raw = localStorage.getItem(COMMENTS_KEY);
+                if (raw) comments = JSON.parse(raw) || {{}};
+            }} catch (e) {{
+                comments = {{}};
+            }}
+            // merge into records for convenience
+            records.forEach((r, i) => {{ if (comments.hasOwnProperty(i)) r.comment = comments[i]; }});
+        }}
+
+        function saveCommentsToStorage() {{
+            try {{
+                localStorage.setItem(COMMENTS_KEY, JSON.stringify(comments));
+            }} catch (e) {{ /* ignore */ }}
+        }}
+
+        // render comment into contenteditable area without triggering input save
+        let _isSettingComment = false;
+        function renderComment(index) {{
+            const rec = records[index];
+            const c = rec.comment || comments[index] || '';
+            _isSettingComment = true;
+            elCommentDisplay.innerText = c;
+            // clear flag next tick
+            setTimeout(() => (_isSettingComment = false), 0);
+        }}
+
+        function debounce(fn, wait) {{
+            let t = null;
+            return function(...args) {{
+                if (t) clearTimeout(t);
+                t = setTimeout(() => fn.apply(this, args), wait);
+            }};
+        }}
+
+        const debouncedSave = debounce(() => saveCommentsToStorage(), 250);
+
+        elCommentDisplay.addEventListener('input', () => {{
+            if (_isSettingComment) return;
+            const text = elCommentDisplay.innerText.trim();
+            if (text) {{
+                comments[currentIndex] = text;
+                records[currentIndex].comment = text;
+            }} else {{
+                delete comments[currentIndex];
+                records[currentIndex].comment = null;
+            }}
+            debouncedSave();
+        }});
+
+        elCommentDisplay.addEventListener('blur', () => saveCommentsToStorage());
 
         // Helper: Difficulty Colors
         function getDiffColor(diff) {{
@@ -380,6 +478,9 @@ impl HtmlGenerator {
 
             // 4. Handle Title Scrolling
             handleTitleScroll(elTitle);
+
+            // 5. Render comment for this slide (if present)
+            if (typeof renderComment === 'function') renderComment(index);
         }}
 
         function handleTitleScroll(element) {{
@@ -469,6 +570,8 @@ impl HtmlGenerator {
 
         // Init
         window.onload = () => {{
+            // load persisted comments before initializing UI
+            if (typeof loadComments === 'function') loadComments();
             initSidebar();
             // If URL contains ?i=<index>, render that slide and do not auto-start the timer.
             const params = new URLSearchParams(window.location.search);
