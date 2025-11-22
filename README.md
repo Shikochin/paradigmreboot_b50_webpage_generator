@@ -4,10 +4,13 @@ This is a tool used to generate a webpage showcasing Paradigm: Reboot Best 50.
 
 ## Usage
 
-1. Install [Rust](https://rust-lang.org)
-2. Place the `records.csv` file (Get it on <http://prp.icel.site>) in the root directory of the project.
-3. `cargo run`, it will auto download song covers on <http://paradigmrebootzh.miraheze.org/wiki/%E6%9B%B2%E7%9B…>, or you can save this webpage as `wiki.html` in the root directory of the project.
-4. It generates `b50_slides.html` for you.
+1. Install Rust (https://rust-lang.org)
+
+2. Place the `records.csv` file (available at <http://prp.icel.site>) in the project root directory.
+
+3. Run `cargo run`, which will automatically download song covers from <https://paradigmrebootzh.miraheze.org/wiki/曲目列表>, or you can save this page as `wiki.html` and place it in the project root directory (if the connection cannot be established).
+
+4. It will automatically generate the `b50_slides.html` file.
 
 ## Thanks
 - Gemini 3 Pro
