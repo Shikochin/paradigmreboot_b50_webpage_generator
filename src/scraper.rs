@@ -7,6 +7,9 @@ use std::io::{Write, copy};
 use std::path::Path;
 use std::time::Duration;
 
+// 新版本阈值：若曲目加入版本 >= 该值则视为新版本（可通过修改此常量升级判断）
+const NEW_VERSION_THRESHOLD: (u32, u32, u32) = (3, 9, 0);
+
 pub struct Scraper;
 
 impl Scraper {
@@ -146,6 +149,30 @@ impl Scraper {
                 continue;
             }
 
+            // 尝试从表格行的任意单元格中提取版本号（如 3.9.0）以判断是否为新版本
+            let mut is_new = false;
+            for cell in &cells {
+                let text = cell.text().collect::<String>();
+                // 简单查找形式为数字.数字.数字 的版本号
+                if let Some(mat) = regex::Regex::new(r"\d+\.\d+\.\d+")
+                    .ok()
+                    .and_then(|re| re.find(&text).map(|m| m.as_str().to_string()))
+                {
+                    // 解析为三段数字比较是否 >= 3.9.0
+                    let parts: Vec<u32> = mat
+                        .split('.')
+                        .filter_map(|p| p.parse::<u32>().ok())
+                        .collect();
+                    if parts.len() >= 3 {
+                        let v = (parts[0], parts[1], parts[2]);
+                        if v >= NEW_VERSION_THRESHOLD {
+                            is_new = true;
+                        }
+                    }
+                    break;
+                }
+            }
+
             // 解析图片 URL
             let img_url = cells[0]
                 .select(&img_selector)
@@ -189,6 +216,7 @@ impl Scraper {
                 CachedMeta {
                     artist,
                     local_cover_path: local_path,
+                    is_new,
                 },
             );
         }

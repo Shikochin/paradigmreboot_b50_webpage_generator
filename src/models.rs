@@ -81,6 +81,8 @@ pub struct CsvRow {
 pub struct CachedMeta {
     pub artist: String,
     pub local_cover_path: String,
+    #[serde(default)]
+    pub is_new: bool,
 }
 
 /// 维基缓存类型别名：Title -> Metadata
