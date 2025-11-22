@@ -8,7 +8,7 @@ This is a tool used to generate a webpage showcasing Paradigm: Reboot Best 50.
 
 2. Place the `records.csv` file (available at <http://prp.icel.site>) in the project root directory.
 
-3. Save [the wiki page](https://paradigmrebootzh.miraheze.org/wiki/曲目列表) as `wiki.html` and place it in the project root directory, or just simply run `get_wikihtml.ts` to get it.
+3. Save [the wiki page](https://paradigmrebootzh.miraheze.org/wiki/曲目列表) as `wiki.html` and place it in the project root directory, or just simply run `deno --allow-all get_wikihtml.ts` to get it.
 
 4. Run `cargo run`, which will automatically download song covers and generate the `b50_slides.html` file.
 

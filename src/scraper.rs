@@ -51,7 +51,7 @@ impl Scraper {
         String::new()
     }
 
-    /// 下载图片并返回本地路径
+    /// 下载图片并返回本地路径 (relative to dist/)
     fn download_image(client: &Client, title: &str, url: &str) -> String {
         // 净化文件名，防止非法字符
         let safe_title: String = title
@@ -70,10 +70,14 @@ impl Scraper {
         } else {
             "jpg"
         };
-        let filename = format!("covers/{}.{}", safe_title, ext);
 
-        if Path::new(&filename).exists() {
-            return filename;
+        // Web path (relative to HTML file in dist/)
+        let web_path = format!("covers/{}.{}", safe_title, ext);
+        // File system path (relative to project root)
+        let fs_path = format!("dist/{}", web_path);
+
+        if Path::new(&fs_path).exists() {
+            return web_path;
         }
 
         print!("下载: {} ... ", title);
@@ -81,10 +85,10 @@ impl Scraper {
 
         match client.get(url).send() {
             Ok(mut resp) => {
-                if let Ok(mut file) = File::create(&filename) {
+                if let Ok(mut file) = File::create(&fs_path) {
                     if copy(&mut resp, &mut file).is_ok() {
                         println!("OK");
-                        return filename;
+                        return web_path;
                     }
                 }
             }
@@ -98,12 +102,17 @@ impl Scraper {
 
     /// 入口：确保获取元数据（优先读取缓存，其次尝试网络，最后尝试本地HTML）
     pub fn ensure_metadata_cache() -> WikiCache {
-        let cache_file = "wiki_cache.json";
+        let dist_dir = "dist";
+        if !Path::new(dist_dir).exists() {
+            fs::create_dir_all(dist_dir).unwrap();
+        }
+
+        let cache_file = format!("{}/wiki_cache.json", dist_dir);
 
         // 1. 尝试读取已存在的缓存文件
-        if Path::new(cache_file).exists() {
-            println!("发现本地缓存 'wiki_cache.json'，正在加载...");
-            if let Ok(content) = fs::read_to_string(cache_file) {
+        if Path::new(&cache_file).exists() {
+            println!("发现本地缓存 '{}'，正在加载...", cache_file);
+            if let Ok(content) = fs::read_to_string(&cache_file) {
                 if let Ok(cache) = serde_json::from_str::<WikiCache>(&content) {
                     println!("成功加载 {} 首歌曲的缓存数据。", cache.len());
                     return cache;
@@ -130,8 +139,9 @@ impl Scraper {
         let mut cache = HashMap::new();
         let client = Self::create_client();
 
-        if !Path::new("covers").exists() {
-            fs::create_dir("covers").unwrap();
+        let covers_dir = format!("{}/covers", dist_dir);
+        if !Path::new(&covers_dir).exists() {
+            fs::create_dir_all(&covers_dir).unwrap();
         }
 
         println!("正在分析表格并下载所有封面（请耐心等待）...");
@@ -149,7 +159,7 @@ impl Scraper {
                 continue;
             }
 
-            // 尝试从表格行的任意单元格中提取版本号（如 3.9.0）以判断是否为新版本
+            // 尝试从表格行的任意单元格中提取版本号以判断是否为新版本
             let mut is_new = false;
             for cell in &cells {
                 let text = cell.text().collect::<String>();
@@ -158,7 +168,7 @@ impl Scraper {
                     .ok()
                     .and_then(|re| re.find(&text).map(|m| m.as_str().to_string()))
                 {
-                    // 解析为三段数字比较是否 >= 3.9.0
+                    // 解析为三段数字比较是否 >= NEW_VERSION_THRESHOLD
                     let parts: Vec<u32> = mat
                         .split('.')
                         .filter_map(|p| p.parse::<u32>().ok())
@@ -223,7 +233,7 @@ impl Scraper {
 
         // 3. 保存缓存到文件
         if let Ok(json_str) = serde_json::to_string_pretty(&cache) {
-            let _ = fs::write(cache_file, json_str);
+            let _ = fs::write(&cache_file, json_str);
             println!("元数据已缓存至 '{}'，下次运行将跳过下载。", cache_file);
         }
 
