@@ -316,16 +316,22 @@ impl HtmlGenerator {
         <div id="progress-bar"></div>
         <div id="status-overlay">PAUSED</div>
     </div>
+    <!-- Audio element for local playback -->
+    <audio id="b50-audio" controls style="position:fixed; left:40px; bottom:20px; z-index:50; width:300px;">
+        Your browser does not support the audio element.
+    </audio>
 
     <script>
         // Data Injection
         const records = {2};
         
         // Config
-        const DURATION_PER_SLIDE = 5000; // (unused) previously used for auto-advance
-
+        const DURATION_PER_SLIDE = 5000; // 5 seconds
+        
         // State
         let currentIndex = 0;
+        let isPaused = false;
+        let timer = null;
 
         // DOM Elements
         const elSidebar = document.getElementById('sidebar');
@@ -342,6 +348,7 @@ impl HtmlGenerator {
         const elStatus = document.getElementById('status-overlay');
         const elAnimCover = document.getElementById('anim-cover');
         const elAnimInfo = document.getElementById('anim-info');
+        const elAudio = document.getElementById('b50-audio');
 
         // Comment elements (inline editable)
         const elCommentPanel = document.getElementById('comment-panel');
@@ -414,20 +421,21 @@ impl HtmlGenerator {
             }}
         }}
 
-        // Init Sidebar (render in reverse: 50 -> 1)
+        // Init Sidebar (display in reverse order: 50 -> 1)
         function initSidebar() {{
             elSidebar.innerHTML = '';
             for (let i = records.length - 1; i >= 0; i--) {{
                 const rec = records[i];
+                const displayRank = i + 1;
                 const item = document.createElement('div');
                 item.className = 'list-item';
                 item.id = `item-${{i}}`;
                 item.onclick = () => jumpTo(i);
-
+                
                 const diffColor = getDiffColor(rec.difficulty);
 
                 item.innerHTML = `
-                    <div class="item-rank">#${{i + 1}}</div>
+                    <div class="item-rank">#${{displayRank}}</div>
                     <div class="item-info">
                         <div class="item-title">${{rec.song_metadata.title}}</div>
                         <div class="item-meta">
@@ -483,6 +491,21 @@ impl HtmlGenerator {
 
             // 5. Render comment for this slide (if present)
             if (typeof renderComment === 'function') renderComment(index);
+
+            // 6. Update audio source if available (uses song_metadata.audio_path)
+            try {
+                if (rec.song_metadata && rec.song_metadata.audio_path) {
+                    elAudio.src = rec.song_metadata.audio_path;
+                    if (!isPaused) {
+                        elAudio.play().catch(() => {});
+                    }
+                } else {
+                    elAudio.removeAttribute('src');
+                    try { elAudio.pause(); } catch(e) {}
+                }
+            } catch (e) {
+                // ignore if fields missing
+            }
         }}
 
         function handleTitleScroll(element) {{
@@ -516,31 +539,57 @@ impl HtmlGenerator {
             }}
         }}
 
-        // Navigation helpers (no auto-advance)
-        function nextTrack() {{
-            const next = currentIndex - 1; // moving forward visually is descending index
-            if (next < 0) return;
-            render(next);
+        // Timer Logic
+        function startTimer() {{
+            if (timer) clearTimeout(timer);
+            
+            elProgress.style.transition = 'none';
+            elProgress.style.width = '0%';
+            
+            // Trigger reflow
+            void elProgress.offsetWidth;
+            
+            const duration = DURATION_PER_SLIDE;
+            elProgress.style.transition = `width ${{duration}}ms linear`;
+            elProgress.style.width = '100%';
+            
+            timer = setTimeout(() => {{
+                nextSlide();
+            }}, duration);
         }}
 
-        function prevTrack() {{
-            const prev = currentIndex + 1;
-            if (prev >= records.length) return;
-            render(prev);
+        function nextSlide() {{
+            let next = currentIndex + 1;
+            if (next >= records.length) return; // Stop at end
+            render(next);
+            if (!isPaused) startTimer();
         }}
 
         function jumpTo(index) {{
             render(index);
+            if (!isPaused) startTimer();
         }}
 
-        // Controls: Left/Right arrows to navigate
+        // Controls
         document.addEventListener('keydown', (e) => {{
-            if (e.code === 'ArrowLeft') {{
+            if (e.code === 'Space') {{
                 e.preventDefault();
-                prevTrack();
-            }} else if (e.code === 'ArrowRight') {{
-                e.preventDefault();
-                nextTrack();
+                isPaused = !isPaused;
+                elStatus.style.display = isPaused ? 'block' : 'none';
+                
+                if (isPaused) {{
+                    clearTimeout(timer);
+                    const computedStyle = window.getComputedStyle(elProgress);
+                    const width = computedStyle.getPropertyValue('width');
+                    elProgress.style.transition = 'none';
+                    elProgress.style.width = width;
+                    // Pause text scroll
+                    elTitle.style.animationPlayState = 'paused';
+                }} else {{
+                    // Simply restart the slide timer for UX simplicity
+                    startTimer();
+                    elTitle.style.animationPlayState = 'running';
+                }}
             }}
         }});
 
@@ -549,7 +598,7 @@ impl HtmlGenerator {
             // load persisted comments before initializing UI
             if (typeof loadComments === 'function') loadComments();
             initSidebar();
-            // If URL contains ?i=<index>, render that slide and do not auto-start timer.
+            // If URL contains ?i=<index>, render that slide and do not auto-start the timer.
             const params = new URLSearchParams(window.location.search);
             const idxParam = params.get('i');
             if (idxParam !== null) {{
@@ -557,11 +606,12 @@ impl HtmlGenerator {
                 if (!isNaN(idx) && idx >= 0 && idx < records.length) {{
                     render(idx);
                 }} else {{
-                    render(Math.max(records.length - 1, 0));
+                    render(0);
                 }}
+                // Do not start timer to keep the slide stable for screenshots
             }} else {{
-                // default: start at the last (50th) item and await user navigation
-                render(Math.max(records.length - 1, 0));
+                render(0);
+                startTimer();
             }}
         }};
     </script>
