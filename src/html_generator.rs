@@ -85,12 +85,25 @@ impl HtmlGenerator {
             cursor: pointer;
             position: relative;
             border-left: 4px solid transparent;
+            
+            /* Focus effect: blur non-active items */
+            filter: blur(6px) grayscale(0.3);
+            opacity: 0.6;
+        }}
+        
+        .list-item:hover {{
+            filter: blur(0.5px) grayscale(0.1);
+            opacity: 0.8;
         }}
         
         .list-item.active {{
             background: linear-gradient(90deg, var(--panel-active), transparent);
             border-left: 4px solid var(--accent-purple);
             transform: translateX(15px);
+            
+            /* Reset focus effect for active item */
+            filter: none;
+            opacity: 1;
         }}
 
         .item-rank {{
