@@ -100,6 +100,10 @@ impl HtmlGenerator {
         }}
         .list-item.active .item-rank {{ color: var(--accent-purple); }}
 
+        /* Section headers inside sidebar */
+        .section-header {{ padding: 10px 20px; color: var(--text-sub); font-size: 13px; font-weight: 700; opacity: 0.9; }}
+        .section-title {{ font-size: 14px; color: var(--accent-blue); margin-bottom: 6px; }}
+
         .item-info {{ flex: 1; overflow: hidden; }}
         .item-title {{ 
             font-size: 16px; font-weight: 600; 
@@ -326,6 +330,9 @@ impl HtmlGenerator {
 
         // State
         let currentIndex = 0;
+        // displayedOrder: array of record indices in the order items are shown in the sidebar
+        let displayedOrder = [];
+        let currentDisplayPos = 0;
 
         // DOM Elements
         const elSidebar = document.getElementById('sidebar');
@@ -414,20 +421,43 @@ impl HtmlGenerator {
             }}
         }}
 
-        // Init Sidebar (render in reverse: 50 -> 1)
+        // Init Sidebar: split into New (Best 15) and Old (Best 35)
         function initSidebar() {{
             elSidebar.innerHTML = '';
-            for (let i = records.length - 1; i >= 0; i--) {{
+            displayedOrder = [];
+
+            // Collect indices for new and old tracks (records are sorted by rating desc)
+            const newIndices = [];
+            const oldIndices = [];
+            for (let i = 0; i < records.length; i++) {{
                 const rec = records[i];
+                if (rec.song_metadata && rec.song_metadata.is_new) newIndices.push(i);
+                else oldIndices.push(i);
+            }}
+
+            const topNew = newIndices.slice(0, 15);
+            const topOld = oldIndices.slice(0, 35);
+
+            // Render New section header
+            const newHeader = document.createElement('div');
+            newHeader.className = 'section-header';
+            newHeader.innerHTML = `<div class="section-title">Best 15</div>`;
+            elSidebar.appendChild(newHeader);
+
+            // Render new items (show from 15 -> 1)
+            for (let k = topNew.length - 1; k >= 0; k--) {{
+                const idx = topNew[k];
+                const rec = records[idx];
                 const item = document.createElement('div');
                 item.className = 'list-item';
-                item.id = `item-${{i}}`;
-                item.onclick = () => jumpTo(i);
+                item.id = `item-${{idx}}`;
+                item.onclick = () => jumpTo(idx);
 
                 const diffColor = getDiffColor(rec.difficulty);
+                const rankLabel = k + 1; // reversed: length..1 -> display 15..1
 
                 item.innerHTML = `
-                    <div class="item-rank">#${{i + 1}}</div>
+                    <div class="item-rank">#${{rankLabel}}</div>
                     <div class="item-info">
                         <div class="item-title">${{rec.song_metadata.title}}</div>
                         <div class="item-meta">
@@ -437,6 +467,39 @@ impl HtmlGenerator {
                     </div>
                 `;
                 elSidebar.appendChild(item);
+                displayedOrder.push(idx);
+            }}
+
+            // Separator for old section
+            const oldHeader = document.createElement('div');
+            oldHeader.className = 'section-header';
+            oldHeader.innerHTML = `<div class="section-title">Best 35</div>`;
+            elSidebar.appendChild(oldHeader);
+
+            // Render old items (show from 35 -> 1)
+            for (let k = topOld.length - 1; k >= 0; k--) {{
+                const idx = topOld[k];
+                const rec = records[idx];
+                const item = document.createElement('div');
+                item.className = 'list-item';
+                item.id = `item-${{idx}}`;
+                item.onclick = () => jumpTo(idx);
+
+                const diffColor = getDiffColor(rec.difficulty);
+                const rankLabel = k + 1; // reversed within group: e.g., 35..1
+
+                item.innerHTML = `
+                    <div class="item-rank">#${{rankLabel}}</div>
+                    <div class="item-info">
+                        <div class="item-title">${{rec.song_metadata.title}}</div>
+                        <div class="item-meta">
+                            <span class="diff-badge" style="background:${{diffColor}}">${{rec.difficulty}} ${{rec.level.toFixed(1)}}</span>
+                            <span>${{rec.score}}</span>
+                        </div>
+                    </div>
+                `;
+                elSidebar.appendChild(item);
+                displayedOrder.push(idx);
             }}
         }}
 
@@ -517,16 +580,26 @@ impl HtmlGenerator {
         }}
 
         // Navigation helpers (no auto-advance)
+        function getDisplayPosFromRecordIndex(recIdx) {{
+            return displayedOrder.indexOf(recIdx);
+        }}
+
         function nextTrack() {{
-            const next = currentIndex - 1; // moving forward visually is descending index
-            if (next < 0) return;
-            render(next);
+            if (!displayedOrder || displayedOrder.length === 0) return;
+            let pos = getDisplayPosFromRecordIndex(currentIndex);
+            if (pos === -1) pos = 0; // fallback
+            if (pos >= displayedOrder.length - 1) return;
+            const nextRec = displayedOrder[pos + 1];
+            render(nextRec);
         }}
 
         function prevTrack() {{
-            const prev = currentIndex + 1;
-            if (prev >= records.length) return;
-            render(prev);
+            if (!displayedOrder || displayedOrder.length === 0) return;
+            let pos = getDisplayPosFromRecordIndex(currentIndex);
+            if (pos === -1) pos = 0;
+            if (pos <= 0) return;
+            const prevRec = displayedOrder[pos - 1];
+            render(prevRec);
         }}
 
         function jumpTo(index) {{
@@ -552,16 +625,27 @@ impl HtmlGenerator {
             // If URL contains ?i=<index>, render that slide and do not auto-start timer.
             const params = new URLSearchParams(window.location.search);
             const idxParam = params.get('i');
+            // Determine default index: prefer Best15's 15th song (B15 #15). If not enough new songs,
+            // fall back to the last new song; if no new songs, fall back to last record.
+            const newAll = [];
+            for (let i = 0; i < records.length; i++) {{ if (records[i].song_metadata && records[i].song_metadata.is_new) newAll.push(i); }}
+            let defaultIndex = Math.max(records.length - 1, 0);
+            if (newAll.length >= 15) {{
+                defaultIndex = newAll[14];
+            }} else if (newAll.length > 0) {{
+                defaultIndex = newAll[newAll.length - 1];
+            }}
+
             if (idxParam !== null) {{
                 const idx = parseInt(idxParam, 10);
                 if (!isNaN(idx) && idx >= 0 && idx < records.length) {{
                     render(idx);
                 }} else {{
-                    render(Math.max(records.length - 1, 0));
+                    render(defaultIndex);
                 }}
             }} else {{
-                // default: start at the last (50th) item and await user navigation
-                render(Math.max(records.length - 1, 0));
+                // default: render B15's #15 (or fallback)
+                render(defaultIndex);
             }}
         }};
     </script>

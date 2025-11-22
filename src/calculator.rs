@@ -4,6 +4,8 @@ use std::path::Path;
 
 pub struct Calculator;
 
+const PLAYER_NAME: &str = "Player";
+
 impl Calculator {
     /// Rating 计算公式
     /// 1.000m ~ 1.009m: Slope 1500
@@ -54,13 +56,18 @@ impl Calculator {
             let rating = Self::calculate_rating(row.level, score_val);
             let diff_enum = Difficulty::from_str(&row.difficulty);
 
-            // 从缓存中查找元数据
-            let (artist, cover_url) = if let Some(meta) = wiki_cache.get(&row.title) {
-                (meta.artist.clone(), meta.local_cover_path.clone())
+            // 从缓存中查找元数据（包含 is_new 标记）
+            let (artist, cover_url, is_new) = if let Some(meta) = wiki_cache.get(&row.title) {
+                (
+                    meta.artist.clone(),
+                    meta.local_cover_path.clone(),
+                    meta.is_new,
+                )
             } else {
                 (
                     "Unknown Artist".to_string(),
                     "covers/default.jpg".to_string(),
+                    false,
                 )
             };
 
@@ -71,6 +78,7 @@ impl Calculator {
                     artist,
                     cover_url,
                     bilibili_av: None,
+                    is_new,
                 },
                 difficulty: diff_enum,
                 level: row.level,
@@ -85,12 +93,10 @@ impl Calculator {
 
         // 排序并截断至 B50
         records.sort_by(|a, b| b.rating.partial_cmp(&a.rating).unwrap());
-        if records.len() > 50 {
-            records.truncate(50);
-        }
+        records.truncate(51);
 
         Ok(B50Project {
-            player_name: "Player".to_string(),
+            player_name: PLAYER_NAME.to_string(),
             generated_at: chrono::Local::now().format("%Y-%m-%d").to_string(),
             records,
         })

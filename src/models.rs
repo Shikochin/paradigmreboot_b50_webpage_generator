@@ -41,6 +41,8 @@ pub struct SongMetadata {
     pub artist: String,
     pub cover_url: String, // Will point to local path
     pub bilibili_av: Option<String>,
+    #[serde(default)]
+    pub is_new: bool,
 }
 
 /// B50 单曲记录
