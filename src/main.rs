@@ -1,11 +1,10 @@
 mod calculator;
-mod generator;
+mod html_generator;
 mod models;
 mod scraper;
 
 use calculator::Calculator;
-use generator::html_generator::HtmlGenerator;
-use generator::script_generator::ScriptGenerator;
+use html_generator::HtmlGenerator;
 use std::path::Path;
 
 fn main() {
@@ -34,13 +33,6 @@ fn main() {
         eprintln!("HTML生成错误: {}", e);
     } else {
         println!("已生成幻灯片: 'b50_slides.html'");
-    }
-
-    // 4. 生成渲染脚本
-    if let Err(e) = ScriptGenerator::generate(&project) {
-        eprintln!("脚本生成错误: {}", e);
-    } else {
-        println!("已生成渲染脚本: 'render.sh'");
     }
 
     println!("\n完成！请在浏览器打开 'b50_slides.html' 查看效果。");
