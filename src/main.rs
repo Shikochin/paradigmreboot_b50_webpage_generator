@@ -86,7 +86,13 @@ fn start_server(port: u16, root_dir: &str) {
         // 移除 URL 参数（如果有）
         let clean_path = path.split('?').next().unwrap_or(path);
 
-        let file_path = format!("{}{}", root_dir, clean_path);
+        // URL 解码
+        let decoded_path = match urlencoding::decode(clean_path) {
+            Ok(p) => p.into_owned(),
+            Err(_) => clean_path.to_string(),
+        };
+
+        let file_path = format!("{}{}", root_dir, decoded_path);
 
         if let Ok(file) = File::open(&file_path) {
             let content_type = if file_path.ends_with(".html") {
