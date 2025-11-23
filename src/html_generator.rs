@@ -339,7 +339,6 @@ impl HtmlGenerator {
         const records = {2};
         
         // Config
-        const DURATION_PER_SLIDE = 5000; // (unused) previously used for auto-advance
 
         // State
         let currentIndex = 0;

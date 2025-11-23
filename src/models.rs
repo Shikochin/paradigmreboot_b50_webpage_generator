@@ -7,7 +7,6 @@ pub enum Difficulty {
     Detected, // Cyan
     Invaded,  // Red/Pink
     Massive,  // Purple
-    Fate,     // White/Deep Purple
     Unknown(String),
 }
 
@@ -17,18 +16,7 @@ impl Difficulty {
             "Detected" => Difficulty::Detected,
             "Invaded" => Difficulty::Invaded,
             "Massive" => Difficulty::Massive,
-            "Fate" => Difficulty::Fate,
             _ => Difficulty::Unknown(s.to_string()),
-        }
-    }
-
-    pub fn to_color(&self) -> &str {
-        match self {
-            Difficulty::Detected => "#3fcbff",
-            Difficulty::Invaded => "#ff6b6b",
-            Difficulty::Massive => "#8f629d",
-            Difficulty::Fate => "#eeeeee",
-            Difficulty::Unknown(_) => "#888888",
         }
     }
 }
