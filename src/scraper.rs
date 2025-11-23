@@ -1,9 +1,10 @@
 use crate::models::{CachedMeta, WikiCache};
+use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::blocking::Client;
 use scraper::{Html, Selector};
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{Write, copy};
+use std::io::copy;
 use std::path::Path;
 use std::time::Duration;
 
@@ -52,6 +53,7 @@ impl Scraper {
     }
 
     /// 下载图片并返回本地路径 (relative to dist/)
+    /// Silent version: does not print to stdout
     fn download_image(client: &Client, title: &str, url: &str) -> String {
         // 净化文件名，防止非法字符
         let safe_title: String = title
@@ -80,21 +82,16 @@ impl Scraper {
             return web_path;
         }
 
-        print!("下载: {} ... ", title);
-        let _ = std::io::stdout().flush();
-
         match client.get(url).send() {
             Ok(mut resp) => {
                 if let Ok(mut file) = File::create(&fs_path) {
                     if copy(&mut resp, &mut file).is_ok() {
-                        println!("OK");
                         return web_path;
                     }
                 }
             }
             Err(_) => {}
         }
-        println!("Skipped (Error)");
 
         // 如果下载失败，返回默认占位符
         "covers/default.jpg".to_string()
@@ -144,11 +141,25 @@ impl Scraper {
             fs::create_dir_all(&covers_dir).unwrap();
         }
 
-        println!("正在分析表格并下载所有封面（请耐心等待）...");
+        println!("正在分析表格并下载所有封面...");
 
-        for row in document.select(&row_selector) {
+        // Collect rows first to get count
+        let rows: Vec<_> = document.select(&row_selector).collect();
+        let total_rows = rows.len() as u64;
+
+        let pb = ProgressBar::new(total_rows);
+        pb.set_style(
+            ProgressStyle::with_template(
+                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}",
+            )
+            .unwrap()
+            .progress_chars("##-"),
+        );
+
+        for row in rows {
             let cells: Vec<_> = row.select(&Selector::parse("td").unwrap()).collect();
             if cells.len() < 3 {
+                pb.inc(1);
                 continue;
             }
 
@@ -156,8 +167,11 @@ impl Scraper {
             let artist = cells[2].text().collect::<String>().trim().to_string();
 
             if title.is_empty() {
+                pb.inc(1);
                 continue;
             }
+
+            pb.set_message(format!("Processing: {}", title));
 
             // 尝试从表格行的任意单元格中提取版本号以判断是否为新版本
             let mut is_new = false;
@@ -229,7 +243,10 @@ impl Scraper {
                     is_new,
                 },
             );
+            pb.inc(1);
         }
+
+        pb.finish_with_message("Done");
 
         // 3. 保存缓存到文件
         if let Ok(json_str) = serde_json::to_string_pretty(&cache) {
