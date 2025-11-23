@@ -1,5 +1,6 @@
 use crate::models::{CachedMeta, WikiCache};
 use indicatif::{ProgressBar, ProgressStyle};
+use rayon::prelude::*;
 use reqwest::blocking::Client;
 use scraper::{Html, Selector};
 use std::collections::HashMap;
@@ -12,6 +13,13 @@ use std::time::Duration;
 const NEW_VERSION_THRESHOLD: (u32, u32, u32) = (3, 9, 0);
 
 pub struct Scraper;
+
+struct DownloadTask {
+    title: String,
+    artist: String,
+    img_url: String,
+    is_new: bool,
+}
 
 impl Scraper {
     /// 创建配置好的 HTTP 客户端
@@ -133,33 +141,18 @@ impl Scraper {
         let row_selector = Selector::parse("table.wikitable tr").unwrap();
         let img_selector = Selector::parse("img").unwrap();
 
-        let mut cache = HashMap::new();
-        let client = Self::create_client();
-
         let covers_dir = format!("{}/covers", dist_dir);
         if !Path::new(&covers_dir).exists() {
             fs::create_dir_all(&covers_dir).unwrap();
         }
 
-        println!("正在分析表格并下载所有封面...");
+        println!("正在分析表格并准备下载任务...");
 
-        // Collect rows first to get count
-        let rows: Vec<_> = document.select(&row_selector).collect();
-        let total_rows = rows.len() as u64;
-
-        let pb = ProgressBar::new(total_rows);
-        pb.set_style(
-            ProgressStyle::with_template(
-                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}",
-            )
-            .unwrap()
-            .progress_chars("##-"),
-        );
-
-        for row in rows {
+        // 3. 解析所有任务
+        let mut tasks = Vec::new();
+        for row in document.select(&row_selector) {
             let cells: Vec<_> = row.select(&Selector::parse("td").unwrap()).collect();
             if cells.len() < 3 {
-                pb.inc(1);
                 continue;
             }
 
@@ -167,11 +160,8 @@ impl Scraper {
             let artist = cells[2].text().collect::<String>().trim().to_string();
 
             if title.is_empty() {
-                pb.inc(1);
                 continue;
             }
-
-            pb.set_message(format!("Processing: {}", title));
 
             // 尝试从表格行的任意单元格中提取版本号以判断是否为新版本
             let mut is_new = false;
@@ -229,26 +219,60 @@ impl Scraper {
                 })
                 .unwrap_or_default();
 
-            let local_path = if !img_url.is_empty() {
-                Self::download_image(&client, &title, &img_url)
-            } else {
-                "covers/default.jpg".to_string()
-            };
-
-            cache.insert(
+            tasks.push(DownloadTask {
                 title,
-                CachedMeta {
-                    artist,
-                    local_cover_path: local_path,
-                    is_new,
-                },
-            );
-            pb.inc(1);
+                artist,
+                img_url,
+                is_new,
+            });
         }
+
+        println!("发现 {} 个任务，开始并行下载...", tasks.len());
+
+        let pb = ProgressBar::new(tasks.len() as u64);
+        pb.set_style(
+            ProgressStyle::with_template(
+                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}",
+            )
+            .unwrap()
+            .progress_chars("##-"),
+        );
+
+        // 使用 Arc<Mutex<>> 包装 cache 以便在多线程中写入 (或者 collect 之后再写入)
+        // 这里选择 collect 结果再写入 HashMap，避免锁竞争
+        let results: Vec<(String, CachedMeta)> = tasks
+            .par_iter()
+            .map(|task| {
+                // 每个线程创建一个 client (reqwest client 是轻量级的，但为了保险起见也可以 lazy static)
+                // reqwest::blocking::Client 内部有 Arc，所以 clone 是廉价的
+                let client = Self::create_client();
+
+                pb.set_message(format!("Processing: {}", task.title));
+
+                let local_path = if !task.img_url.is_empty() {
+                    Self::download_image(&client, &task.title, &task.img_url)
+                } else {
+                    "covers/default.jpg".to_string()
+                };
+
+                pb.inc(1);
+
+                (
+                    task.title.clone(),
+                    CachedMeta {
+                        artist: task.artist.clone(),
+                        local_cover_path: local_path,
+                        is_new: task.is_new,
+                    },
+                )
+            })
+            .collect();
 
         pb.finish_with_message("Done");
 
-        // 3. 保存缓存到文件
+        let cache: WikiCache = results.into_iter().collect();
+
+        // 4. 保存缓存到文件
         if let Ok(json_str) = serde_json::to_string_pretty(&cache) {
             let _ = fs::write(&cache_file, json_str);
             println!("元数据已缓存至 '{}'，下次运行将跳过下载。", cache_file);

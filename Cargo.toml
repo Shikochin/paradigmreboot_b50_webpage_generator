@@ -12,6 +12,8 @@ reqwest = { version = "0.11", features = ["blocking", "rustls-tls"] }
 scraper = "0.18"
 regex = "1.10"
 indicatif = "0.17"
+rayon = "1.8"
+urlencoding = "2.1"
 
 # Local web GUI dependencies
 tiny_http = "0.12"
